@@ -96,6 +96,15 @@ let convert_rule_id (id, _tok) = { PM.id; message = ""; pattern_string = id }
 let any_in_ranges rule any rwms =
   (* This is potentially slow. We may need to store range position in
    * the AST at some point. *)
+  (* match any with
+  | G.Tk tok ->
+    (match Parse_info.token_location_of_info tok with
+    | Ok tok_loc ->
+      let r = Range.range_of_token_locations tok_loc tok_loc in
+      List.filter (fun rwm -> Range.( $<=$ ) r rwm.RM.r) rwms
+      |> Common.map (RM.range_to_pattern_match_adjusted rule)
+    | Error _ -> [])
+  | _ -> *)
   match Visitor_AST.range_of_any_opt any with
   | None ->
       logger#debug
@@ -106,6 +115,7 @@ let any_in_ranges rule any rwms =
       let r = Range.range_of_token_locations tok1 tok2 in
       List.filter (fun rwm -> Range.( $<=$ ) r rwm.RM.r) rwms
       |> Common.map (RM.range_to_pattern_match_adjusted rule)
+  [@@profiling]
 
 let range_w_metas_of_pformula config equivs file_and_more rule_id pformula =
   let formula = Rule.formula_of_pformula pformula in

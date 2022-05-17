@@ -1307,7 +1307,7 @@ and definition = entity * definition_kind
  * Note that with the new entity_name type and EPattern, one entity value
  * can actually correspond to the definition of multiple vairables.
  *
- * less: could be renamed entity_def, and name is a kind of entity_use.
+ * less: could be renamed entity_def, is a kind of entity_use.
  *)
 and entity = {
   (* In Ruby you can define a class with a qualified name as in

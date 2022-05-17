@@ -351,6 +351,7 @@ let check_function_signature env fun_exp args_taint =
       logger#error "cannot match taint variable with function arguments";
     taint_opt
   in
+  (* logger#flash "check_function_signature %s" (IL.show_exp fun_exp); *)
   match (!hook_function_taint_signature, fun_exp) with
   | ( Some hook,
       {
@@ -366,19 +367,72 @@ let check_function_signature env fun_exp args_taint =
                         G.id_resolved =
                           {
                             contents =
-                              Some ((G.ImportedEntity _ | G.ResolvedName _), _);
+                              Some ((G.ImportedEntity dotid | G.ResolvedName dotid), _);
                           };
                         _;
                       };
                     _;
                   };
-              offset = _;
+              offset = NoOffset;
               _;
             };
         eorig = SameAs eorig;
         _;
       } ) ->
-      let* fun_sig = hook env.config eorig in
+      let* fun_sig = hook env.config dotid in
+      Some
+        (fun_sig
+        |> List.filter_map (function
+             | SrcToReturn (dm, trace, _return_tok) ->
+                 let dm = Call (eorig, trace, dm) in
+                 Some (Taint.singleton { orig = Src dm; rev_trace = [] })
+             | ArgToReturn (i, trace, _return_tok) ->
+                 let* arg_taint = taint_of_arg i in
+                 Some
+                   (arg_taint
+                   |> Taint.map (fun taint ->
+                          let rev_trace =
+                            List.rev_append trace (snd ident :: taint.rev_trace)
+                          in
+                          { taint with rev_trace }))
+             | ArgToSink (i, trace, sink) ->
+                 let sink = Call (eorig, trace, sink) in
+                 let* arg_taint = taint_of_arg i in
+                 arg_taint
+                 |> Taint.iter (fun t ->
+                        findings_of_tainted_sink env (Taint.singleton t) sink
+                        |> report_findings env);
+                 None
+             (* THINK: Should we report something here? *)
+             | SrcToSink _ -> None)
+        |> List.fold_left Taint.union Taint.empty)
+  | ( Some hook,
+      {
+        e =
+          Fetch
+            {
+              base = _;
+              offset = Dot
+                  {
+                    ident;
+                    id_info =
+                      {
+                        G.id_resolved =
+                          {
+                            contents =
+                              Some ((G.ImportedEntity dotid | G.ResolvedName dotid), _);
+                          };
+                        _;
+                      };
+                    _;
+                  };
+              _;
+            };
+        eorig = SameAs eorig;
+        _;
+      } ) ->
+      let* fun_sig = hook env.config dotid in
+      logger#flash "check_function_sig #findings = %d" (List.length fun_sig);
       Some
         (fun_sig
         |> List.filter_map (function
@@ -514,7 +568,21 @@ let (transfer :
                 (* THINK: Why can't we just replace the existing taint? *)
                 | Some taint' -> Some (Taint.union taint taint'))
               in'
-        | _, None -> in')
+        | false, None ->
+        (match x.i with
+        | Call (None, { e = Fetch { base = Var var; offset = Dot _fld; _ }; _ }, _args)
+          ->
+            (* logger#flash "Dataflow_tainting %s.%s(%s)" (str_of_name var) (str_of_name _fld)
+              (List.map (fun e -> IL.show_orig e.eorig) _args |> String.concat ", "); *)
+            VarMap.update (str_of_name var)
+              (function
+                | None -> Some taint
+                (* THINK: Why can't we just replace the existing taint? *)
+                | Some taint' -> Some (Taint.union taint taint'))
+              in'
+        | _ -> in')
+        | true, None -> in'
+         )
     | NReturn (tok, e) -> (
         (* TODO: Move most of this to check_tainted_return. *)
         let taint = check_tainted_return env tok e in

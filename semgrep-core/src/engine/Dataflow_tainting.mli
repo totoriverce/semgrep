@@ -83,7 +83,7 @@ type fun_env = (var, Pattern_match.Set.t) Hashtbl.t
 val pm_of_dm : deep_match -> Pattern_match.t
 
 val hook_function_taint_signature :
-  (config -> AST_generic.expr -> finding list option) option ref
+  (config -> AST_generic.dotted_ident -> finding list option) option ref
 (** Deep Semgrep *)
 
 val fixpoint :
